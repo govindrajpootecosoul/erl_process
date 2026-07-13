@@ -1,0 +1,22 @@
+{
+    "name": "pattex-etl",
+    "version": "1.0.0",
+    "description": "ETL process from Azure Blob Storage to MongoDB for Pattex",
+    "main": "dist/index.js",
+    "scripts": {
+        "build": "tsc",
+        "start": "tsc && node dist/index.js",
+        "dev": "ts-node src/index.ts"
+    },
+    "dependencies": {
+        "@azure/storage-blob": "^12.26.0",
+        "csv-parse": "^5.6.0",
+        "dotenv": "^16.4.7",
+        "mongodb": "^6.12.0"
+    },
+    "devDependencies": {
+        "@types/node": "^20.11.0",
+        "ts-node": "^10.9.2",
+        "typescript": "^5.3.3"
+    }
+}
