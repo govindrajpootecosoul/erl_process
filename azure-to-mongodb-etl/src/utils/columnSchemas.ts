@@ -1,7 +1,8 @@
 
 
 export function normalizeColumnName(key: string): string {
-  return key.replace(/[\s\.]+/g, '_').toLowerCase().trim();
+  // Strip UTF-8 BOM first — otherwise [\s] replaces it with leading "_"
+  return key.replace(/^\uFEFF/, '').trim().replace(/[\s\.]+/g, '_').toLowerCase();
 }
 
 export const SPROUT_INVENTORY_COLUMNS = [
@@ -175,6 +176,116 @@ export const SPS_COMMERCE_COLUMNS = [
   'new_status',
 ];
 
+export const WALMART_SCINTILLA_INVENTORY_COLUMNS = [
+  'walmart_calendar_year',
+  'walmart_calendar_month',
+  'walmart_calendar_week',
+  'report_date',
+  'distribution_center_name',
+  'ecomm_upc_number',
+  'product_name',
+  'available_to_sell_quantity_this_year',
+  'available_to_sell_quantity_this_year_eop',
+  'on_hand_unit_quantity_this_year',
+  'on_hand_unit_quantity_this_year_eop',
+  'walmart_sku',
+  'ecosoul_sku',
+  'year',
+  'month',
+];
+
+export const WALMART_SCINTILLA_ORDER_FORECAST_COLUMNS = [
+  'sugg_order_dt',
+  'store_dc_nbr',
+  'store_dc_type',
+  'dc_nm',
+  'dc_city_name',
+  'wm_item_nbr',
+  'product_description',
+  'order_place_dt',
+  'sched_arvl_dt',
+  'vendor_pack_quantity',
+  'vendor_name',
+  'order_each_quantity',
+  'walmart_sku',
+  'ecosoul_sku',
+  'month',
+  'year',
+  'item_number',
+];
+
+export const WALMART_SCINTILLA_SALES_COLUMNS = [
+  'walmart_calendar_year',
+  'walmart_calendar_month',
+  'walmart_calendar_week',
+  'business_date',
+  'walmart_item_number',
+  'product_description',
+  'vendor_pack_quantity',
+  'vendor_name',
+  'auth_based_item_quantity_this_year',
+  'auth_based_net_sales_amount_this_year',
+  'shipped_based_net_sales_amount_this_year',
+  'shipped_based_quantity_this_year',
+  'walmart_sku',
+  'ecosoul_sku',
+  'year',
+  'month',
+  'unnamed_12',
+  'unnamed_13',
+  'unnamed_14',
+  'unnamed_15',
+  'walmart_calendar_year_1',
+  'walmart_calendar_year_2',
+  'walmart_calendar_year_3',
+  'item_number',
+];
+
+export const WALMART_SCINTILLA_SKU_COLUMNS = [
+  'item_number',
+  'walmart_sku',
+  'ecosoul_sku',
+  'upc',
+  'ecomm_upc_number',
+  'pack',
+  'unit_cost',
+];
+
+export const WALMART_SCINTILLA_STORE_SALES_COLUMNS = [
+  'walmart_calendar_week',
+  'walmart_calendar_year',
+  'walmart_calendar_month',
+  'business_date',
+  'name_of_the_dc',
+  'item_name',
+  'walmart_item_number',
+  'vendor_pack_quantity',
+  'city_name',
+  'vendor_number',
+  'max_shelf_quantity_this_year',
+  'dollar_per_str_with_sales_per_week_or_per_day_ly',
+  'dollar_per_str_with_sales_per_week_or_per_day_ty',
+  'dollar_per_store_per_week_or_per_day_last_year',
+  'dollar_per_store_per_week_or_per_day_this_year',
+  'units_per_str_with_sales_per_week_or_per_day_ly',
+  'units_per_str_with_sales_per_week_or_per_day_ty',
+  'units_per_store_per_week_or_per_day_last_year',
+  'units_per_store_per_week_or_per_day_this_year',
+  'instock_percentage_this_year',
+  'instock_percentage_last_year',
+  'store_on_hand_quantity_this_year',
+  'store_in_warehouse_quantity_this_year',
+  'pos_quantity_this_year',
+  'pos_sales_this_year',
+  'pos_store_count_this_year',
+  'scan_count_this_year',
+  'walmart_sku',
+  'ecosoul_sku',
+  'year',
+  'month',
+  'walmart_calendar_quarter',
+  'item_number',
+];
 export function validateColumns(fileColumns: string[], requiredColumns: readonly string[]) {
   const requiredSet = new Set(requiredColumns);
   const fileSet = new Set(fileColumns.map(normalizeColumnName));

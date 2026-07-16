@@ -471,6 +471,7 @@ export const KINETICA_AMAZON_ADS_COLUMNS = [
   'date',
   'report_type',
   'campaign_name',
+  'product_category',
   'impressions',
   'clicks',
   'spend',
@@ -482,7 +483,6 @@ export const KINETICA_AMAZON_ADS_COLUMNS = [
   'conversion_rate',
   'quantity',
   'overall_sale',
-  'product_category',
 ] as const;
 
 export function validateColumns(fileColumns: string[], requiredColumns: readonly string[]) {

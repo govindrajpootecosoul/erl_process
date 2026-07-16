@@ -1,7 +1,10 @@
 import { BlobServiceClient, ContainerClient } from '@azure/storage-blob';
 import { parse } from 'csv-parse';
 import * as dotenv from 'dotenv';
+import { createReadStream, promises as fs } from 'fs';
 import { Db } from 'mongodb';
+import * as os from 'os';
+import * as path from 'path';
 import { connectToDatabase, closeDatabase } from './config/db';
 import { etlConfigs, EtlConfig } from './utils/mapping';
 import { normalizeColumnName, validateColumns } from './utils/columnSchemas';
@@ -12,6 +15,7 @@ dotenv.config();
 
 const azureConnectionString = process.env.AZURE_CONNECTION_STRING ?? '';
 const containerName = process.env.AZURE_CONTAINER_NAME ?? '';
+const INSERT_BATCH_SIZE = 2000;
 
 if (!azureConnectionString || !containerName) {
   throw new Error('Please define AZURE_CONNECTION_STRING and AZURE_CONTAINER_NAME in .env file');
@@ -27,6 +31,21 @@ type PreparedFile = {
   records: Record<string, string>[];
 };
 
+/** Download full blob to disk first — avoids Azure stream abort on large/slow parses. */
+async function downloadBlobToTemp(
+  containerClient: ContainerClient,
+  blobName: string,
+  fileLabel: string
+): Promise<string> {
+  const blobClient = containerClient.getBlobClient(blobName);
+  const tmpPath = path.join(os.tmpdir(), `etl-${fileLabel}-${Date.now()}.csv`);
+  log.info(`Downloading ${fileLabel} to temp file…`);
+  await blobClient.downloadToFile(tmpPath);
+  const stat = await fs.stat(tmpPath);
+  log.info(`Downloaded ${fileLabel}: ${(stat.size / (1024 * 1024)).toFixed(1)} MiB`);
+  return tmpPath;
+}
+
 async function validateAndPrepareFile(
   config: EtlConfig,
   containerClient: ContainerClient
@@ -34,6 +53,8 @@ async function validateAndPrepareFile(
   const { blobName, collectionName, requiredColumns } = config;
   const fileLabel = getFileLabel(blobName);
   log.processing(`${fileLabel} (validate)`, collectionName);
+
+  let tmpPath: string | undefined;
 
   try {
     const blobClient = containerClient.getBlobClient(blobName);
@@ -43,9 +64,10 @@ async function validateAndPrepareFile(
       return { result: 'skipped' };
     }
 
-    const downloadResponse = await blobClient.download(0);
-    const parser = downloadResponse.readableStreamBody!.pipe(
-      parse({ columns: true, skip_empty_lines: true, trim: true })
+    tmpPath = await downloadBlobToTemp(containerClient, blobName, fileLabel);
+
+    const parser = createReadStream(tmpPath).pipe(
+      parse({ columns: true, skip_empty_lines: true, trim: true, bom: true })
     );
 
     const requiredSet = new Set(requiredColumns);
@@ -113,6 +135,10 @@ async function validateAndPrepareFile(
       }
 
       records.push(cleanRecord);
+
+      if (rowNumber % 100_000 === 0) {
+        log.info(`Parsed ${fileLabel}: ${rowNumber.toLocaleString()} rows…`);
+      }
     }
 
     if (!headersValidated) {
@@ -145,6 +171,10 @@ async function validateAndPrepareFile(
     const message = error instanceof Error ? error.message : String(error);
     log.error(`Error with ${fileLabel}: ${message}`);
     return { result: 'failed' };
+  } finally {
+    if (tmpPath) {
+      await fs.unlink(tmpPath).catch(() => undefined);
+    }
   }
 }
 
@@ -156,7 +186,16 @@ async function uploadAtomic(db: Db, prepared: PreparedFile): Promise<ProcessResu
   const tmpName = `${collectionName}__tmp_${Date.now()}`;
   try {
     const tmp = db.collection(tmpName);
-    await tmp.insertMany(records);
+
+    for (let i = 0; i < records.length; i += INSERT_BATCH_SIZE) {
+      const batch = records.slice(i, i + INSERT_BATCH_SIZE);
+      await tmp.insertMany(batch, { ordered: true });
+      if (records.length > INSERT_BATCH_SIZE && (i + INSERT_BATCH_SIZE) % 50_000 < INSERT_BATCH_SIZE) {
+        log.info(
+          `Uploading ${fileLabel}: ${Math.min(i + INSERT_BATCH_SIZE, records.length).toLocaleString()} / ${records.length.toLocaleString()}`
+        );
+      }
+    }
 
     // Atomic replace: rename temp -> target and drop old target
     await tmp.rename(collectionName, { dropTarget: true });
@@ -166,6 +205,11 @@ async function uploadAtomic(db: Db, prepared: PreparedFile): Promise<ProcessResu
     const message = error instanceof Error ? error.message : String(error);
     log.error(`Upload failed for ${fileLabel}: ${message}`);
     log.warn(`Old data kept unchanged for [${collectionName}]`);
+    try {
+      await db.collection(tmpName).drop();
+    } catch {
+      // temp may not exist
+    }
     return 'failed';
   }
 }
@@ -175,7 +219,9 @@ async function start(): Promise<void> {
   log.banner();
   log.start(`Starting ETL — ${etlConfigs.length} files configured`);
 
-  const blobServiceClient = BlobServiceClient.fromConnectionString(azureConnectionString);
+  const blobServiceClient = BlobServiceClient.fromConnectionString(azureConnectionString, {
+    retryOptions: { maxTries: 5, tryTimeoutInMs: 5 * 60 * 1000 },
+  });
   const containerClient = blobServiceClient.getContainerClient(containerName);
 
   const validation = { success: 0, failed: 0, skipped: 0 };
